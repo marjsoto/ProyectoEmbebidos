@@ -1,0 +1,213 @@
+//Libraries
+#include "max6675.h"              //Download it here: http://electronoobs.com/eng_arduino_max6675.php
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>    //Download it here: http://electronoobs.com/eng_arduino_liq_crystal.php
+//Inputs Outputs
+int SSR = 7;
+int thermoDO = 4;                 //Data pin for MAX6675 
+int thermoCS = 5;                 //CS pin for MAX6675 
+int thermoCLK = 6;                //Clock pin for MAX6675
+int DT = 8;                       //Data pin for encoder
+int CLK = 9;                      //Clock pin for encoder
+int but_1 = 2;                   //Button 1 input
+int but_2 = 3;                   //Button 2 input
+int buzzer = 12;                  //Buzzer output pin
+
+
+MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);  //On MAX6675 SPI communicacion
+LiquidCrystal_I2C lcd(0x27,20,4);                     //direccion
+
+//Variables
+unsigned int millis_before, millis_before_2;
+unsigned int millis_now = 0;
+int refresh_rate = 1000;
+int pid_refresh_rate = 300;
+unsigned int seconds = 0;
+int running_mode = 0;
+int selected_mode = 0;
+int max_modes = 1;
+bool but_1_state = true;
+bool but_2_state  =true;
+float pwm_value = 5;
+int max_pwm_value = 40;
+int min_pwm_value = 2;
+float temp_setpoint = 0;
+float temperature = 0;
+
+void setup() {
+  //Define the OUTPUTs
+  pinMode(SSR, OUTPUT);       //comienza SSR apagado
+  digitalWrite(SSR, LOW);
+  pinMode(buzzer, OUTPUT);    //comienza buzzer apagadao
+  digitalWrite(buzzer, LOW);
+
+  //Define the INPUTS
+  pinMode(DT, INPUT_PULLUP);
+  pinMode(CLK, INPUT_PULLUP);
+  pinMode(but_1, INPUT_PULLUP);
+  pinMode(but_2, INPUT_PULLUP);
+  
+  Serial.begin(9600);
+  lcd.init();                 //Inicio  LCD
+  lcd.backlight();            //Activar backlight     
+
+  millis_before = millis();
+  millis_now = millis();
+  
+}
+
+void loop() { 
+  millis_now = millis();
+  if(millis_now - millis_before_2 > pid_refresh_rate){    
+    millis_before_2 = millis();      
+    temperature = thermocouple.readCelsius();
+    if(running_mode == 1){       
+      if(temperature < 70){//150 es el original
+        temp_setpoint = seconds;
+        if(temp_setpoint > temperature){
+          pwm_value = pwm_value + 0.3;
+          if(pwm_value > max_pwm_value){
+            pwm_value = max_pwm_value;
+          }
+        }
+        else{
+          pwm_value--;
+          if(pwm_value < min_pwm_value){
+            pwm_value = min_pwm_value;
+          }
+        }
+      }
+      else if(temperature > 65){//140 es el original
+        max_pwm_value = 25;//60 es el original
+        temp_setpoint = 200;
+        if(temp_setpoint > temperature){
+          pwm_value = pwm_value + 0.3;
+          if(pwm_value > max_pwm_value){
+            pwm_value = max_pwm_value;
+          }
+        }
+        else{
+          pwm_value--;
+          if(pwm_value < min_pwm_value){
+            pwm_value = min_pwm_value;
+          }
+        }
+      } 
+               
+      analogWrite(SSR, pwm_value);  //Configuramos el PWM
+        
+      if(temperature > 75){//190
+        running_mode = 10;  
+        analogWrite(SSR, LOW);     
+      }
+    }//end of running_mode == 1
+    
+    if(running_mode == 10){
+      lcd.clear();
+      lcd.setCursor(0,1);     
+      lcd.print("      COMPLETE      ");
+      tone(buzzer, 1000, 1000);    
+      seconds = 0;              //Reset timer
+      running_mode = 11;
+      delay(2000);
+    }  
+  }//end of pid_refresh_rate
+
+  
+  
+  if(millis_now - millis_before > refresh_rate){
+    millis_before = millis();   
+    seconds = seconds + (refresh_rate/1000);      //Contamos el tiempo
+    Serial.println(temperature);
+    
+    if(running_mode == 0){    
+      digitalWrite(SSR, LOW);   
+      lcd.clear();
+      lcd.setCursor(0,0);     
+      lcd.print("Temp: ");
+      lcd.print(temperature,1);
+      lcd.setCursor(0,1);     
+      lcd.print("SSR: OFF");  
+      lcd.setCursor(0,2);     
+      lcd.print("SELECTED MODE: ");  
+      lcd.print(selected_mode);  
+      lcd.setCursor(0,3);     
+      lcd.print("NOT RUNNING");     
+    }//end of running_mode == 0
+
+    else if(running_mode == 11){ 
+      if(temperature < 40){
+        running_mode = 0; 
+         tone(buzzer, 1000, 100); 
+      }
+      digitalWrite(SSR, LOW);   
+      lcd.clear();
+      lcd.setCursor(0,0);     
+      lcd.print("Temp: ");
+      lcd.print(temperature,1);
+      lcd.setCursor(0,1);     
+      lcd.print("SSR: OFF");  
+      lcd.setCursor(0,2);     
+      lcd.print("SELECTED MODE: ");  
+      lcd.print(selected_mode);  
+      lcd.setCursor(0,3);     
+      lcd.print("COOLDOWN");     
+    }//end of running_mode == 0
+  
+      
+    else if(running_mode == 1){            
+      lcd.clear();
+      lcd.setCursor(0,0);     
+      lcd.print("Temp: ");
+      lcd.print(temperature,1);
+      lcd.setCursor(0,1);     
+      lcd.print("SSR: ON ");  lcd.print("Time: "); lcd.print(seconds); 
+      lcd.setCursor(0,2);     
+      lcd.print("SELECTED MODE: ");  
+      lcd.print(selected_mode);  
+      lcd.setCursor(0,3);     
+      lcd.print("RUNNING | PWM: ");  lcd.print(pwm_value,1);
+    }//end of running_mode == 1
+  }//end of millis_now - millis_before > refresh_rate
+
+
+
+
+  ///////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////
+  if(!digitalRead(but_1) && but_1_state){
+    but_1_state = false;
+    selected_mode ++;
+    millis_before = millis_before-1000;
+    if(selected_mode > max_modes){
+      selected_mode = 0;
+    }
+  }
+  else if(digitalRead(but_1) && !but_1_state){
+    but_1_state = true;
+  }
+  ///////////////////////////////////////////////////////////////////
+  if(!digitalRead(but_2) && but_2_state){
+    if(running_mode == 1){
+      digitalWrite(SSR, LOW);
+      running_mode = 0;
+      selected_mode = 0; 
+    }
+    
+    but_2_state = false;
+    if(selected_mode == 0){
+      running_mode = 0;
+    }
+    else if(selected_mode == 1){
+      running_mode = 1;
+      tone(buzzer, 1000, 1000);
+      seconds = 0;              //Reset timer
+    }
+  }
+  else if(digitalRead(but_2) && !but_2_state){
+    but_2_state = true;
+  }
+  ///////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////
+  
+}
