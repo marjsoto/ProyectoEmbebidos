@@ -1,7 +1,7 @@
 //Libraries
-#include "max6675.h"              //Download it here: http://electronoobs.com/eng_arduino_max6675.php
+#include "max6675.h"              
 #include <Wire.h> 
-#include <LiquidCrystal_I2C.h>    //Download it here: http://electronoobs.com/eng_arduino_liq_crystal.php
+#include <LiquidCrystal_I2C.h>    
 //Inputs Outputs
 int SSR = 7;
 int thermoDO = 4;                 //Data pin for MAX6675 
